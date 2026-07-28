@@ -1,0 +1,149 @@
+name: Build, sign, and publish RPM repo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "specs/**"
+      - "SOURCES/**"
+      - "index.html"
+      - "*.repo"
+      - ".github/workflows/publish.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-sign-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install RPM build and signing tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm createrepo-c gnupg2
+
+      - name: Import GPG signing key
+        env:
+          GPG_PRIVATE_KEY_ASCII: ${{ secrets.GPG_PRIVATE_KEY_ASCII }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PRIVATE_KEY_ASCII}" ]; then
+            echo "::error::GPG_PRIVATE_KEY_ASCII secret is not set. See README.md for setup." >&2
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.gnupg"
+          chmod 700 "$HOME/.gnupg"
+          echo "allow-loopback-pinentry" >> "$HOME/.gnupg/gpg-agent.conf"
+          echo "pinentry-mode loopback" >> "$HOME/.gnupg/gpg.conf"
+          gpgconf --kill gpg-agent || true
+
+          echo "${GPG_PRIVATE_KEY_ASCII}" | gpg --batch --import
+
+          GPG_KEY_ID="$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5}' | tail -1)"
+          echo "GPG_KEY_ID=${GPG_KEY_ID}" >> "$GITHUB_ENV"
+
+          # Passphrase file used non-interactively by rpmsign/gpg below.
+          # Runner is single-use and torn down after the job; file never leaves it.
+          install -m 600 /dev/null "$HOME/.gnupg-passphrase"
+          printf '%s' "${GPG_PASSPHRASE}" > "$HOME/.gnupg-passphrase"
+
+      - name: Configure rpm signing macros
+        run: |
+          {
+            printf '%%_signature gpg\n'
+            printf '%%_gpg_name %s\n' "${GPG_KEY_ID}"
+            printf '%%__gpg_sign_cmd %%{__gpg} gpg --batch --yes --no-armor --pinentry-mode loopback --passphrase-file %s --digest-algo sha256 -u "%%{_gpg_name}" -sbo %%{__signature_filename} %%{__plaintext_filename}\n' "$HOME/.gnupg-passphrase"
+          } > "$HOME/.rpmmacros"
+
+      - name: Build RPMs from specs/
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/rpmbuild"/{SPECS,SOURCES,RPMS,SRPMS,BUILD,BUILDROOT}
+          cp -v specs/*.spec "$HOME/rpmbuild/SPECS/"
+          if [ -d SOURCES ] && [ -n "$(ls -A SOURCES 2>/dev/null)" ]; then
+            cp -v SOURCES/* "$HOME/rpmbuild/SOURCES/"
+          fi
+          for spec in "$HOME"/rpmbuild/SPECS/*.spec; do
+            rpmbuild -bb "$spec"
+          done
+
+      - name: Sign built RPMs
+        run: |
+          set -euo pipefail
+          find "$HOME/rpmbuild/RPMS" -name '*.rpm' -print0 \
+            | xargs -0 rpm --addsign
+          find "$HOME/rpmbuild/RPMS" -name '*.rpm' -print0 \
+            | xargs -0 rpm --checksig
+
+      - name: Add new packages to the registry
+        run: |
+          set -euo pipefail
+          mkdir -p packages
+          find "$HOME/rpmbuild/RPMS" -name '*.rpm' -exec cp -n -v {} packages/ \;
+
+      - name: Publish public GPG key
+        run: |
+          gpg --armor --export "${GPG_KEY_ID}" > RPM-GPG-KEY-stackedrackzz
+
+      - name: Generate/update repodata
+        run: |
+          createrepo_c --update packages/
+
+      - name: Sign repodata (repomd.xml)
+        run: |
+          set -euo pipefail
+          gpg --batch --yes --pinentry-mode loopback \
+              --passphrase-file "$HOME/.gnupg-passphrase" \
+              -u "${GPG_KEY_ID}" \
+              --detach-sign --armor \
+              -o packages/repodata/repomd.xml.asc \
+              packages/repodata/repomd.xml
+
+      - name: Commit new/updated packages back to the repo
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages RPM-GPG-KEY-stackedrackzz
+          if git diff --cached --quiet; then
+            echo "No package changes to commit."
+          else
+            git commit -m "Publish updated RPM packages [skip ci]"
+            git push
+          fi
+
+      - name: Assemble Pages site
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          cp index.html site/
+          cp *.repo site/
+          cp RPM-GPG-KEY-stackedrackzz site/
+          cp -r packages site/packages
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
