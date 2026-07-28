@@ -10,6 +10,8 @@ on:
       - "*.repo"
       - ".github/workflows/publish.yml"
   workflow_dispatch: {}
+  repository_dispatch:
+    types: [external-package-build]
 
 permissions:
   contents: write
@@ -86,6 +88,19 @@ jobs:
           for spec in "$HOME"/rpmbuild/SPECS/*.spec; do
             rpmbuild -bb "$spec"
           done
+
+      - name: Download externally built package
+        if: github.event_name == 'repository_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_ARTIFACT_TOKEN }}
+          SOURCE_REPO: ${{ github.event.client_payload.source_repo }}
+          RUN_ID: ${{ github.event.client_payload.run_id }}
+          ARTIFACT_NAME: ${{ github.event.client_payload.artifact_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p external-artifact
+          gh run download "$RUN_ID" --repo "$SOURCE_REPO" --name "$ARTIFACT_NAME" --dir external-artifact
+          find external-artifact -name '*.rpm' -exec cp -v {} "$HOME/rpmbuild/RPMS/" \;
 
       - name: Sign built RPMs
         run: |
