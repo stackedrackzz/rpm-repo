@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stackedrackzz RPM repo</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 42rem;
+    margin: 3rem auto;
+    padding: 0 1.25rem;
+    line-height: 1.55;
+  }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: rgba(127,127,127,0.12);
+    border-radius: 6px;
+  }
+  code { padding: 0.15em 0.4em; }
+  pre { padding: 1rem; overflow-x: auto; }
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.1rem; margin-top: 2rem; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<h1>stackedrackzz RPM repo</h1>
+<p>
+  A GPG-signed yum/dnf repository, built and published straight from
+  <a href="https://github.com/stackedrackzz/rpm-repo">this GitHub repo</a>
+  via GitHub Actions and served as static files by GitHub Pages.
+</p>
+
+<h2>1. Import the signing key</h2>
+<pre>sudo rpm --import https://stackedrackzz.github.io/rpm-repo/RPM-GPG-KEY-stackedrackzz</pre>
+
+<h2>2. Add the repo</h2>
+<pre>sudo curl -o /etc/yum.repos.d/stackedrackzz.repo \
+  https://stackedrackzz.github.io/rpm-repo/stackedrackzz.repo</pre>
+
+<h2>3. Install packages</h2>
+<pre>sudo dnf install hello-repo</pre>
+
+<h2>Browse packages</h2>
+<p><a href="packages/">packages/</a></p>
+
+<h2>Repo metadata</h2>
+<p><a href="packages/repodata/repomd.xml">repodata/repomd.xml</a></p>
+</body>
+</html>

@@ -1,0 +1,7 @@
+[stackedrackzz-rpm-repo]
+name=stackedrackzz RPM repo
+baseurl=https://stackedrackzz.github.io/rpm-repo/packages/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://stackedrackzz.github.io/rpm-repo/RPM-GPG-KEY-stackedrackzz
