@@ -62,6 +62,11 @@ jobs:
           install -m 600 /dev/null "$HOME/.gnupg-passphrase"
           printf '%s' "${GPG_PASSPHRASE}" > "$HOME/.gnupg-passphrase"
 
+      - name: Publish public GPG key
+        run: |
+          gpg --armor --export "${GPG_KEY_ID}" > RPM-GPG-KEY-stackedrackzz
+          rpm --import RPM-GPG-KEY-stackedrackzz
+
       - name: Configure rpm signing macros
         run: |
           {
@@ -95,10 +100,6 @@ jobs:
           set -euo pipefail
           mkdir -p packages
           find "$HOME/rpmbuild/RPMS" -name '*.rpm' -exec cp -n -v {} packages/ \;
-
-      - name: Publish public GPG key
-        run: |
-          gpg --armor --export "${GPG_KEY_ID}" > RPM-GPG-KEY-stackedrackzz
 
       - name: Generate/update repodata
         run: |
