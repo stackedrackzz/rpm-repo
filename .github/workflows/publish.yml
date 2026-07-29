@@ -120,6 +120,22 @@ jobs:
         run: |
           createrepo_c --update packages/
 
+      - name: Generate packages/ listing page
+        run: |
+          set -euo pipefail
+          {
+            echo "<!doctype html><html><head><meta charset='utf-8'><title>packages</title></head><body>"
+            echo "<p><a href=\"../\">&larr; back</a></p>"
+            echo "<h1>packages/</h1><ul>"
+            for f in packages/*.rpm; do
+              [ -e "$f" ] || continue
+              name=$(basename "$f")
+              echo "<li><a href=\"$name\">$name</a></li>"
+            done
+            echo "<li><a href=\"repodata/repomd.xml\">repodata/repomd.xml</a></li>"
+            echo "</ul></body></html>"
+          } > packages/index.html
+
       - name: Sign repodata (repomd.xml)
         run: |
           set -euo pipefail
